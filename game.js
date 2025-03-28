@@ -31,6 +31,16 @@ const createScene = async function () {
   );
   camera.attachControl(canvas, true);
 
+  /* PLAYER REPRESENTATION
+  -------------------------------------------------*/
+  const playerMesh = BABYLON.MeshBuilder.CreateBox("playerMesh", {
+    height: 1.7,  // Average human height
+    width: 0.5,
+    depth: 0.5
+  }, scene);
+  playerMesh.isVisible = false;  // Invisible mesh for hit testing
+  playerMesh.checkCollisions = true;
+
   /* ENABLE AR 
   -------------------------------------------------*/
   const xr = await scene.createDefaultXRExperienceAsync({
@@ -40,6 +50,9 @@ const createScene = async function () {
     },
     optionalFeatures: ["bounded-floor", "hand-tracking"]
   });
+
+  // Attach player mesh to camera's position
+  xr.baseExperience.camera.parent = playerMesh;
 
   /* LIGHTS
   ------------------------------------------------- */
@@ -74,7 +87,7 @@ const createScene = async function () {
       height: 0.5, 
       width: 3, 
       depth: 1, 
-      xPositions: [0.2, 0.27, -0.2],
+      xPositions: [2, 0.27, -0.2],
       description: "Low obstacle to duck under"
     },
     { 
@@ -98,8 +111,9 @@ const createScene = async function () {
   /* OBSTACLE MANAGEMENT CLASS
   -------------------------------------------------*/
   class ObstacleManager {
-    constructor(scene) {
+    constructor(scene, playerMesh) {
       this.scene = scene;
+      this.playerMesh = playerMesh;
       this.obstacles = [];
       this.currentZPosition = 20;
       this.zSpacing = 2.5;
@@ -169,15 +183,14 @@ const createScene = async function () {
         // Move obstacle forward
         obstacle.position.z -= 0.1 * speed;
 
-        // Check for collision or passing
-        if (obstacle.position.z < 1 && obstacle.position.z > 0) {
-          // Close proximity
-          obstacle.material.emissiveColor = new BABYLON.Color3(1, 1, 0);
+        // Precise collision detection
+        if (this.checkPreciseCollision(obstacle)) {
+          this.handleCollision(obstacle);
+        }
 
-          // Potential collision detection logic can be added here
-          if (obstacle.position.z < 0.5) {
-            this.handleCollision(obstacle);
-          }
+        // Visual proximity indicator
+        if (obstacle.position.z < 1 && obstacle.position.z > 0) {
+          obstacle.material.emissiveColor = new BABYLON.Color3(1, 1, 0);
         } else {
           obstacle.material.emissiveColor = new BABYLON.Color3(0, 0, 0);
         }
@@ -188,6 +201,14 @@ const createScene = async function () {
       if (this.obstacles.length < this.maxObstacles) {
         this.createObstacle();
       }
+    }
+
+    checkPreciseCollision(obstacle) {
+      // Only check collision when obstacle is very close
+      if (obstacle.position.z > 1 || obstacle.position.z < 0) return false;
+
+      // Use intersectsMesh for precise collision detection
+      return this.playerMesh.intersectsMesh(obstacle, true);
     }
 
     handleCollision(obstacle) {
@@ -286,7 +307,7 @@ const createScene = async function () {
   advancedTexture.addControl(livesText);
 
   // Initialize obstacle generation
-  const obstacleManager = new ObstacleManager(scene);
+  const obstacleManager = new ObstacleManager(scene, playerMesh);
   obstacleManager.startContinuousGeneration();
 
   // Game loop for obstacle movement
