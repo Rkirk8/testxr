@@ -11,7 +11,8 @@ const GameConfig = {
   currentDifficulty: 'easy',
   score: 0,
   lives: 3,
-  isGameOver: false
+  isGameOver: false,
+  isGameStarted: false
 };
 
 // Create the scene
@@ -87,7 +88,7 @@ const createScene = async function () {
       height: 0.5, 
       width: 3, 
       depth: 1, 
-      xPositions: [2, 0.27, -0.2],
+      xPositions: [0.2, 0.27, -0.2],
       description: "Low obstacle to duck under"
     },
     { 
@@ -132,8 +133,8 @@ const createScene = async function () {
     }
 
     createObstacle() {
-      // Stop creating obstacles if game is over
-      if (GameConfig.isGameOver) return;
+      // Stop creating obstacles if game is not started or is over
+      if (!GameConfig.isGameStarted || GameConfig.isGameOver) return null;
 
       // Randomly select an obstacle type
       const type = this.getRandomItem(obstacleTypes);
@@ -174,8 +175,8 @@ const createScene = async function () {
     }
 
     updateObstaclePositions() {
-      // Stop moving obstacles if game is over
-      if (GameConfig.isGameOver) return;
+      // Stop moving obstacles if game is not started or is over
+      if (!GameConfig.isGameStarted || GameConfig.isGameOver) return;
 
       const speed = GameConfig.difficulty[GameConfig.currentDifficulty].speed;
       
@@ -233,6 +234,7 @@ const createScene = async function () {
 
     gameOver() {
       GameConfig.isGameOver = true;
+      GameConfig.isGameStarted = false;
 
       // Create game over text
       const gameOverText = new BABYLON.GUI.TextBlock();
@@ -258,6 +260,7 @@ const createScene = async function () {
       GameConfig.lives = 3;
       GameConfig.score = 0;
       GameConfig.isGameOver = false;
+      GameConfig.isGameStarted = false;
 
       // Clear existing obstacles
       this.obstacles.forEach(obstacle => obstacle.dispose());
@@ -271,9 +274,8 @@ const createScene = async function () {
       advancedTexture.removeControl(gameOverText);
       advancedTexture.removeControl(restartButton);
 
-      // Restart obstacle generation
-      this.currentZPosition = 20;
-      this.startContinuousGeneration();
+      // Show start button again
+      advancedTexture.addControl(startButton);
     }
 
     startContinuousGeneration() {
@@ -306,14 +308,33 @@ const createScene = async function () {
   livesText.left = "40%";
   advancedTexture.addControl(livesText);
 
-  // Initialize obstacle generation
-  const obstacleManager = new ObstacleManager(scene, playerMesh);
-  obstacleManager.startContinuousGeneration();
+  // Start Button
+  const startButton = BABYLON.GUI.Button.CreateSimpleButton("startButton", "START GAME");
+  startButton.width = "300px";
+  startButton.height = "100px";
+  startButton.color = "white";
+  startButton.background = "green";
+  startButton.verticalAlignment = BABYLON.GUI.Control.VERTICAL_ALIGNMENT_CENTER;
+  startButton.horizontalAlignment = BABYLON.GUI.Control.HORIZONTAL_ALIGNMENT_CENTER;
+  startButton.onPointerUpObservable.add(() => {
+    // Remove start button
+    advancedTexture.removeControl(startButton);
+    
+    // Start the game
+    GameConfig.isGameStarted = true;
+    
+    // Initialize obstacle generation
+    const obstacleManager = new ObstacleManager(scene, playerMesh);
+    obstacleManager.startContinuousGeneration();
 
-  // Game loop for obstacle movement
-  scene.registerBeforeRender(() => {
-    obstacleManager.updateObstaclePositions();
+    // Game loop for obstacle movement
+    scene.registerBeforeRender(() => {
+      obstacleManager.updateObstaclePositions();
+    });
   });
+
+  // Add start button to the UI
+  advancedTexture.addControl(startButton);
 
   return scene;
 };
