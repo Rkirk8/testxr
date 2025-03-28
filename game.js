@@ -10,7 +10,8 @@ const GameConfig = {
   },
   currentDifficulty: 'easy',
   score: 0,
-  lives: 3
+  lives: 3,
+  isGameOver: false
 };
 
 // Create the scene
@@ -117,6 +118,9 @@ const createScene = async function () {
     }
 
     createObstacle() {
+      // Stop creating obstacles if game is over
+      if (GameConfig.isGameOver) return;
+
       // Randomly select an obstacle type
       const type = this.getRandomItem(obstacleTypes);
       const materialColor = this.getRandomItem(materialColors);
@@ -136,36 +140,13 @@ const createScene = async function () {
       obstacle.material = this.createObstacleMaterial(materialColor);
       obstacle.checkCollisions = true;
 
-      // Z-axis animation
-      const zAnimation = new BABYLON.Animation(
-        `zMovement${name}`, 
-        "position.z", 
-        30, 
-        BABYLON.Animation.ANIMATIONTYPE_FLOAT, 
-        BABYLON.Animation.ANIMATIONLOOPMODE_CYCLE
-      );
-
-      const zKeyFrames = [
-        { frame: 0, value: this.currentZPosition },
-        { frame: 100, value: this.currentZPosition - 20 },
-        { frame: 200, value: this.currentZPosition }
-      ];
-
-      zAnimation.setKeys(zKeyFrames);
-      this.scene.beginDirectAnimation(
-        obstacle, 
-        [zAnimation], 
-        0, 
-        200, 
-        true, 
-        GameConfig.difficulty[GameConfig.currentDifficulty].speed
-      );
-
       this.obstacles.push(obstacle);
       this.currentZPosition += this.zSpacing;
 
       // Remove old obstacles
       this.cleanupObstacles();
+
+      return obstacle;
     }
 
     cleanupObstacles() {
@@ -178,16 +159,107 @@ const createScene = async function () {
       });
     }
 
+    updateObstaclePositions() {
+      // Stop moving obstacles if game is over
+      if (GameConfig.isGameOver) return;
+
+      const speed = GameConfig.difficulty[GameConfig.currentDifficulty].speed;
+      
+      this.obstacles.forEach(obstacle => {
+        // Move obstacle forward
+        obstacle.position.z -= 0.1 * speed;
+
+        // Check for collision or passing
+        if (obstacle.position.z < 1 && obstacle.position.z > 0) {
+          // Close proximity
+          obstacle.material.emissiveColor = new BABYLON.Color3(1, 1, 0);
+
+          // Potential collision detection logic can be added here
+          if (obstacle.position.z < 0.5) {
+            this.handleCollision(obstacle);
+          }
+        } else {
+          obstacle.material.emissiveColor = new BABYLON.Color3(0, 0, 0);
+        }
+      });
+
+      // Cleanup and potentially spawn new obstacles
+      this.cleanupObstacles();
+      if (this.obstacles.length < this.maxObstacles) {
+        this.createObstacle();
+      }
+    }
+
+    handleCollision(obstacle) {
+      // Reduce lives
+      GameConfig.lives--;
+      
+      // Update lives display
+      livesText.text = `Lives: ${GameConfig.lives}`;
+
+      // Remove the obstacle that caused the collision
+      const index = this.obstacles.indexOf(obstacle);
+      if (index > -1) {
+        this.obstacles[index].dispose();
+        this.obstacles.splice(index, 1);
+      }
+
+      // Check for game over
+      if (GameConfig.lives <= 0) {
+        this.gameOver();
+      }
+    }
+
+    gameOver() {
+      GameConfig.isGameOver = true;
+
+      // Create game over text
+      const gameOverText = new BABYLON.GUI.TextBlock();
+      gameOverText.text = "GAME OVER";
+      gameOverText.color = "red";
+      gameOverText.fontSize = 48;
+      advancedTexture.addControl(gameOverText);
+
+      // Optional: Add restart button
+      const restartButton = BABYLON.GUI.Button.CreateSimpleButton("restartButton", "Restart");
+      restartButton.width = "200px";
+      restartButton.height = "60px";
+      restartButton.color = "white";
+      restartButton.background = "green";
+      restartButton.onPointerUpObservable.add(() => {
+        this.restartGame();
+      });
+      advancedTexture.addControl(restartButton);
+    }
+
+    restartGame() {
+      // Reset game configuration
+      GameConfig.lives = 3;
+      GameConfig.score = 0;
+      GameConfig.isGameOver = false;
+
+      // Clear existing obstacles
+      this.obstacles.forEach(obstacle => obstacle.dispose());
+      this.obstacles = [];
+
+      // Reset UI
+      livesText.text = `Lives: ${GameConfig.lives}`;
+      scoreText.text = `Score: ${GameConfig.score}`;
+
+      // Remove game over elements
+      advancedTexture.removeControl(gameOverText);
+      advancedTexture.removeControl(restartButton);
+
+      // Restart obstacle generation
+      this.currentZPosition = 20;
+      this.startContinuousGeneration();
+    }
+
     startContinuousGeneration() {
       // Generate initial set of obstacles
       for (let i = 0; i < 5; i++) {
         this.createObstacle();
       }
-
-      // Continuously generate obstacles
-      setInterval(() => {
-        this.createObstacle();
-      }, 2000);
     }
   }
 
@@ -213,9 +285,14 @@ const createScene = async function () {
   livesText.left = "40%";
   advancedTexture.addControl(livesText);
 
-  // Initialize and start obstacle generation
+  // Initialize obstacle generation
   const obstacleManager = new ObstacleManager(scene);
   obstacleManager.startContinuousGeneration();
+
+  // Game loop for obstacle movement
+  scene.registerBeforeRender(() => {
+    obstacleManager.updateObstaclePositions();
+  });
 
   return scene;
 };
